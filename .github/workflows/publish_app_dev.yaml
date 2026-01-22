@@ -1,80 +1,58 @@
 name: app-build-android
-
 on:
   workflow_dispatch:
   push:
     tags:
       - "dev_v*"
-
 jobs:
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # 改成 ubuntu 更快；如果必须 macos 就改回 macos-latest
     permissions:
       contents: write
-
     steps:
+      # 签出代码（改成 master，你的仓库默认是 master 分支）
       - uses: actions/checkout@v4
         with:
-          ref: master  # 你的仓库默认 master 分支
-
+          ref: master
+      # 设置 JAVA 环境
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
           cache: "gradle"
-
-      - name: Setup Flutter
+      # 设置 Flutter（3.38.x 匹配项目 README）
+      - name: Flutter action
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.0"  # 固定稳定版，避免 .x 取预览版
-          channel: "stable"
+          flutter-version: "3.38.x"
           cache: true
-
-      - name: Flutter Doctor (环境诊断)
+      # 诊断环境（强烈建议保留，帮你看问题）
+      - name: Flutter Doctor
         run: flutter doctor -v
-
-      - name: Accept Android Licenses (关键修复 CI 失败)
-        run: yes "y" | flutter doctor --android-licenses || true  # 自动同意所有，|| true 防已同意时报错
-
+      # 清理旧构建（防止缓存问题导致 silent fail）
       - name: Flutter Clean
         run: |
           cd simple_live_app
           flutter clean
-
-      - name: Restore packages (详细日志)
+      # 更新 packages
+      - name: Restore packages
         run: |
           cd simple_live_app
-          flutter pub get --verbose
-
+          flutter pub get
+      # 安装 flutter_distributor（原代码有，保留）
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
-
-      - name: Check Gradle Version (调试用)
-        run: |
-          cd simple_live_app/android
-          ./gradlew --version || echo "Gradle check failed"
-
-      - name: Build APK (先用 split-per-abi，更稳定)
+      # 打包 APK（无签名 + verbose 日志）
+      - name: Build APK
         run: |
           cd simple_live_app
-          flutter build apk --release --split-per-abi --verbose || echo "Build failed - 查看上面日志的 Gradle/Flutter 错误"
-
-      # 如果你坚持只 arm64，注释上面，启用下面（但 split 更可靠）
-      # - name: Build APK (only arm64)
-      #   run: |
-      #     cd simple_live_app
-      #     flutter build apk --release --target-platform android-arm64 --verbose
-
-      - name: List Built Files (即使失败也显示输出)
-        if: always()
-        run: ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "No build output folder"
-
+          flutter build apk --release --target-platform android-arm64 --verbose
+      # 上传 Artifacts
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
-        if: success()  # 只成功时上传，避免空文件
         with:
-          name: android-apk
+          name: android
           path: |
-            simple_live_app/build/app/outputs/flutter-apk/*.apk  # 用通配，兼容 split 或 single
-
-      - run: echo "🍏 Build status: ${{ job.status }}"
+            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      # 完成
+      - run: echo "🍏 This job's status is ${{ job.status }}."
