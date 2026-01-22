@@ -1,10 +1,10 @@
 name: app-build-android
 
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - "dev_v*"
+  workflow_dispatch:  # 先只留手动触发，避免 tag 干扰
+  # push:
+  #   tags:
+  #     - "dev_v*"
 
 jobs:
   build-android:
@@ -26,11 +26,11 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.1"
+          flutter-version: "3.38.0"  # 固定，避免 .x 问题
           channel: "stable"
           cache: true
 
-      - name: Flutter Doctor 
+      - name: Flutter Doctor
         run: flutter doctor -v
 
       - name: Accept Android Licenses
@@ -41,7 +41,7 @@ jobs:
           cd simple_live_app
           flutter clean
 
-      - name: Restore packages
+      - name: Pub Get
         run: |
           cd simple_live_app
           flutter pub get --verbose
@@ -49,22 +49,21 @@ jobs:
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
 
-      - name: Build APK 
+      - name: Build APK (只 arm64 + 详细栈)
         run: |
           cd simple_live_app
-          flutter build apk --release --target-platform android-arm64 --verbose --stacktrace || echo "=== Gradle 失败，请查看上面日志的详细错误（Execution failed for task ...） ==="
+          flutter build apk --release --target-platform android-arm64 --verbose --stacktrace || echo "构建失败 - 查看上面 Gradle 详细错误"
 
-      - name: Debug: List Build Outputs
+      # 调试：即使失败也列文件
+      - name: Debug Outputs
         if: always()
-        run: |
-          ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "No APK output folder"
-          ls -la simple_live_app/build/app/outputs/ || echo "No outputs folder"
+        run: ls -laR simple_live_app/build/app/outputs/ || echo "无输出文件夹"
 
-      - name: Upload APK to Artifacts
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: simple-live-arm64-apk
+          name: arm64-apk
           path: simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+      - run: echo "Build status: ${{ job.status }}"
