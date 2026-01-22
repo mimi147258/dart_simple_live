@@ -1,68 +1,180 @@
-name: app-build-android
-
+name: app-build-action-dev
 on:
   workflow_dispatch:
-
+  push:
+    tags:
+      - "dev_v*"
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
+  # 打包Android、iOS、Mac
+  build-mac-ios-android:
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
+      # 签出代码
       - uses: actions/checkout@v4
         with:
-          ref: master
-
+          ref: dev
+      # 设置JAVA环境
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
           cache: "gradle"
-
+      # 设置Flutter
+      - name: Flutter action
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+      # 打开MAC Desktop支持
+      - name: Enable Flutter Desktop
+        run: flutter config --enable-macos-desktop
+      # 更新Flutter的packages
+      - name: Restore packages
+        run: |
+          cd simple_live_app
+          flutter pub get
+      # 安装appdmg npm install -g appdmg
+      - name: Install appdmg
+        run: npm install -g appdmg
+      # 设置flutter_distributor环境
+      - name: Install flutter_distributor
+        run: dart pub global activate flutter_distributor
+      # 打包APK（无签名版）
+      - name: Build APK
+        run: |
+          cd simple_live_app
+          flutter build apk --release --split-per-abi
+      #上传Artifacts
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-x86_64-release.apk
+      #打包iOS
+      - name: Build IPA
+        run: |
+          cd simple_live_app
+          flutter build ios --release --no-codesign
+      #创建未签名ipa
+      - name: Create IPA
+        run: |
+          cd simple_live_app
+          mkdir build/ios/iphoneos/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/Runner.app
+          cd build/ios/iphoneos/
+          zip -q -r ios_no_sign.ipa Payload
+          cd ../../..
+      # 上传IPA至Artifacts
+      - name: Upload IPA to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: |
+            simple_live_app/build/ios/iphoneos/ios_no_sign.ipa
+      # 打包MAC
+      - name: Build MacOS
+        run: |
+          cd simple_live_app
+          flutter_distributor package --platform macos --targets dmg,zip --skip-clean
+      # 上传MAC至Artifacts
+      - name: Upload MacOS to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            simple_live_app/build/dist/*/*.dmg
+            simple_live_app/build/dist/*/*.zip
+      #完成
+      - run: echo "🍏 This job's status is ${{ job.status }}."
+  # 打包Linux
+  build-linux:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      # 签出代码
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      # 设置Flutter环境
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.0"
-          channel: "stable"
+          flutter-version: "3.38.x"
           cache: true
-
-      - name: Flutter Doctor
-        run: flutter doctor -v
-
-      - name: Accept Android Licenses
-        run: yes "y" | flutter doctor --android-licenses || true
-
-      - name: Flutter Clean
+      # 安装依赖
+      - name: Update apt-get
+        run: sudo apt-get update
+      - name: Install Dependencies
+        run: sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libasound2-dev libmpv-dev mpv
+      # 打开Linux Desktop支持
+      - name: Enable Flutter Desktop
+        run: flutter config --enable-linux-desktop
+      # 更新Flutter的packages
+      - name: Restore Packages
         run: |
           cd simple_live_app
-          flutter clean
-
-      - name: Restore packages (加修复 + 详细日志)
+          flutter pub get
+      # 设置flutter_distributor环境
+      - name: Install flutter_distributor
+        run: dart pub global activate flutter_distributor
+      # build Linux ZIP\DMG
+      - name: Build Linux
         run: |
           cd simple_live_app
-          flutter pub cache repair  # 修复损坏的 pub cache（耗时，但有效）
-          flutter pub get --verbose || echo "pub get 失败！检查依赖冲突或网络"
-
-      - name: Debug Pub Cache
-        if: always()
-        run: |
-          ls -la ~/.pub-cache/hosted/pub.dev/ || echo "Pub cache 为空或问题"
-          flutter pub deps --style=compact || echo "依赖树打印失败"
-
-      - name: Build APK (先用 split-per-abi 测试稳定)
-        run: |
-          cd simple_live_app
-          flutter build apk --release --split-per-abi --verbose --stacktrace || echo "Build failed - 查看 Gradle 错误"
-
-      - name: Debug Outputs
-        if: always()
-        run: ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "没有生成 APK 文件夹"
-
-      - name: Upload APK
+          flutter_distributor package --platform linux --targets deb,zip --skip-clean
+      # 上传Linux包至Artifacts
+      - name: Upload Linux APP to Artifacts
         uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: android-apks
-          path: simple_live_app/build/app/outputs/flutter-apk/*.apk
-
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+          name: linux
+          path: |
+            simple_live_app/build/dist/*/*.deb
+            simple_live_app/build/dist/*/*.zip
+      #完成
+      - run: echo "🍏 Linux job's status is ${{ job.status }}."
+  # 打包Windows
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      # 签出代码
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      # 设置Flutter环境
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+      - name: Enable Flutter Desktop
+        run: flutter config --enable-windows-desktop
+      - name: Restore Packages
+        run: |
+          cd simple_live_app
+          flutter pub get
+      # 设置flutter_distributor环境
+      - name: Install flutter_distributor
+        run: dart pub global activate flutter_distributor
+      # build Windows ZIP\MSIX
+      - name: Build Windows
+        run: |
+          cd simple_live_app
+          flutter_distributor package --platform windows --targets msix,zip --skip-clean
+      # 上传Windows至Artifacts
+      - name: Upload Windows APP to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            simple_live_app/build/dist/*/*.msix
+            simple_live_app/build/dist/*/*.zip
+      #完成
+      - run: echo "🍏 Windows job's status is ${{ job.status }}."
