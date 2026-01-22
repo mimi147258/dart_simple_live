@@ -26,14 +26,14 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.x"
+          flutter-version: "3.38.1"
           channel: "stable"
           cache: true
 
-      - name: Flutter Doctor (诊断环境)
+      - name: Flutter Doctor 
         run: flutter doctor -v
 
-      - name: Accept Android Licenses (关键修复 CI 失败)
+      - name: Accept Android Licenses
         run: yes "y" | flutter doctor --android-licenses || true
 
       - name: Flutter Clean
@@ -54,7 +54,7 @@ jobs:
           cd simple_live_app
           flutter build apk --release --target-platform android-arm64 --verbose --stacktrace || echo "=== Gradle 失败，请查看上面日志的详细错误（Execution failed for task ...） ==="
 
-      - name: Debug: List Build Outputs (即使失败也显示)
+      - name: Debug: List Build Outputs
         if: always()
         run: |
           ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "No APK output folder"
