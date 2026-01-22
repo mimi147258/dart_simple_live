@@ -1,4 +1,4 @@
-name: app-build-android
+name: app-build-action-dev
 
 on:
   workflow_dispatch:
