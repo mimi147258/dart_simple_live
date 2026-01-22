@@ -51,4 +51,4 @@ jobs:
         with:
           name: android-arm64
           path: simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-      - run: echo "Ì†ºÌΩè Status: ${{ job.status }}"
+      - run: echo "Status: ${{ job.status }}"
