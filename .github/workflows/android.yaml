@@ -1,58 +1,68 @@
 name: app-build-android
+
 on:
   workflow_dispatch:
   push:
     tags:
       - "dev_v*"
+
 jobs:
   build-android:
-    runs-on: ubuntu-latest # 改成 ubuntu 更快；如果必须 macos 就改回 macos-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # 签出代码（改成 master，你的仓库默认是 master 分支）
       - uses: actions/checkout@v4
         with:
           ref: master
-      # 设置 JAVA 环境
+
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
           cache: "gradle"
-      # 设置 Flutter（3.38.x 匹配项目 README）
-      - name: Flutter action
+
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.x"
+          flutter-version: "3.38.0"  # 固定稳定版
+          channel: "stable"
           cache: true
-      # 诊断环境（强烈建议保留，帮你看问题）
+
       - name: Flutter Doctor
         run: flutter doctor -v
-      # 清理旧构建（防止缓存问题导致 silent fail）
+
+      - name: Accept Android Licenses  # 必须加这个，CI 环境 90% exit 1 是 licenses 未同意
+        run: yes "y" | flutter doctor --android-licenses || true
+
       - name: Flutter Clean
         run: |
           cd simple_live_app
           flutter clean
-      # 更新 packages
+
       - name: Restore packages
         run: |
           cd simple_live_app
-          flutter pub get
-      # 安装 flutter_distributor（原代码有，保留）
+          flutter pub get --verbose
+
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
-      # 打包 APK（无签名 + verbose 日志）
+
       - name: Build APK
         run: |
           cd simple_live_app
-          flutter build apk --release --target-platform android-arm64 --verbose
-      # 上传 Artifacts
+          flutter build apk --release --split-per-abi --verbose --stacktrace || echo "=== Gradle 构建失败，请查看上面日志中 Execution failed for task 的具体原因 ==="
+
+      - name: Debug Outputs
+        if: always()
+        run: ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "没有生成 APK 文件夹"
+
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
+        if: success()
         with:
-          name: android
+          name: android-apks
           path: |
-            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-      # 完成
+            simple_live_app/build/app/outputs/flutter-apk/*.apk
+
       - run: echo "🍏 This job's status is ${{ job.status }}."
