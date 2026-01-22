@@ -1,4 +1,4 @@
-name: app-build-action-dev
+name: app-build-android
 
 on:
   workflow_dispatch:
@@ -8,52 +8,64 @@ on:
 
 jobs:
   build-android:
-    runs-on: macos-latest  # 或改成 ubuntu-latest 测试
+    runs-on: ubuntu-latest  # 改成 ubuntu 更快；如果必须 macos 就改回 macos-latest
     permissions:
       contents: write
-
     steps:
+      # 签出代码（改成 master，你的仓库默认是 master 分支）
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: master
 
+      # 设置 JAVA 环境
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
           cache: "gradle"
 
-      - name: Setup Flutter
+      # 设置 Flutter（3.38.x 匹配项目 README）
+      - name: Flutter action
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.x"  # 改成已知稳定版！或 "3.22.3" / "stable"
+          flutter-version: "3.38.x"
           cache: true
 
-      - name: Flutter Doctor (检查环境)
+      # 诊断环境（强烈建议保留，帮你看问题）
+      - name: Flutter Doctor
         run: flutter doctor -v
 
+      # 清理旧构建（防止缓存问题导致 silent fail）
+      - name: Flutter Clean
+        run: |
+          cd simple_live_app
+          flutter clean
+
+      # 更新 packages
       - name: Restore packages
         run: |
           cd simple_live_app
           flutter pub get
 
-      # 可选：如果不需要 distributor，删掉这步能省时间
-      - name: Install flutter_distributor (可选)
+      # 安装 flutter_distributor（原代码有，保留）
+      - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
 
-      - name: Build APK (详细日志)
+      # 打包 APK（无签名 + verbose 日志）
+      - name: Build APK
         run: |
           cd simple_live_app
           flutter build apk --release --split-per-abi --verbose
 
+      # 上传 Artifacts
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
+          name: android
           path: |
             simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
             simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
             simple_live_app/build/app/outputs/flutter-apk/app-x86_64-release.apk
-          if-no-files-found: warn  # 可选：没文件时警告但不 fail
 
-      - run: echo "🍏 Build status: ${{ job.status }}"
+      # 完成
+      - run: echo "🍏 This job's status is ${{ job.status }}."
