@@ -2,9 +2,6 @@ name: app-build-android
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "dev_v*"
 
 jobs:
   build-android:
@@ -25,14 +22,14 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.0"  # 固定稳定版
+          flutter-version: "3.38.0"
           channel: "stable"
           cache: true
 
       - name: Flutter Doctor
         run: flutter doctor -v
 
-      - name: Accept Android Licenses  # 必须加这个，CI 环境 90% exit 1 是 licenses 未同意
+      - name: Accept Android Licenses
         run: yes "y" | flutter doctor --android-licenses || true
 
       - name: Flutter Clean
@@ -40,29 +37,32 @@ jobs:
           cd simple_live_app
           flutter clean
 
-      - name: Restore packages
+      - name: Restore packages (加修复 + 详细日志)
         run: |
           cd simple_live_app
-          flutter pub get --verbose
+          flutter pub cache repair  # 修复损坏的 pub cache（耗时，但有效）
+          flutter pub get --verbose || echo "pub get 失败！检查依赖冲突或网络"
 
-      - name: Install flutter_distributor
-        run: dart pub global activate flutter_distributor
+      - name: Debug Pub Cache
+        if: always()
+        run: |
+          ls -la ~/.pub-cache/hosted/pub.dev/ || echo "Pub cache 为空或问题"
+          flutter pub deps --style=compact || echo "依赖树打印失败"
 
-      - name: Build APK
+      - name: Build APK (先用 split-per-abi 测试稳定)
         run: |
           cd simple_live_app
-          flutter build apk --release --split-per-abi --verbose --stacktrace || echo "=== Gradle 构建失败，请查看上面日志中 Execution failed for task 的具体原因 ==="
+          flutter build apk --release --split-per-abi --verbose --stacktrace || echo "Build failed - 查看 Gradle 错误"
 
       - name: Debug Outputs
         if: always()
         run: ls -la simple_live_app/build/app/outputs/flutter-apk/ || echo "没有生成 APK 文件夹"
 
-      - name: Upload APK to Artifacts
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: android-apks
-          path: |
-            simple_live_app/build/app/outputs/flutter-apk/*.apk
+          path: simple_live_app/build/app/outputs/flutter-apk/*.apk
 
       - run: echo "🍏 This job's status is ${{ job.status }}."
