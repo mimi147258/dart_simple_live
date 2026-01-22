@@ -1,10 +1,10 @@
 name: app-build-android
 
 on:
-  workflow_dispatch:  # 先只留手动触发，避免 tag 干扰
-  # push:
-  #   tags:
-  #     - "dev_v*"
+  workflow_dispatch:
+  push:  # 临时加这个，让它自动触发一次激活显示
+    branches:
+      - master
 
 jobs:
   build-android:
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.0"  # 固定，避免 .x 问题
+          flutter-version: "3.38.0"
           channel: "stable"
           cache: true
 
@@ -41,7 +41,7 @@ jobs:
           cd simple_live_app
           flutter clean
 
-      - name: Pub Get
+      - name: Restore packages
         run: |
           cd simple_live_app
           flutter pub get --verbose
@@ -49,21 +49,20 @@ jobs:
       - name: Install flutter_distributor
         run: dart pub global activate flutter_distributor
 
-      - name: Build APK (只 arm64 + 详细栈)
+      - name: Build APK
         run: |
           cd simple_live_app
-          flutter build apk --release --target-platform android-arm64 --verbose --stacktrace || echo "构建失败 - 查看上面 Gradle 详细错误"
+          flutter build apk --release --target-platform android-arm64 --verbose --stacktrace
 
-      # 调试：即使失败也列文件
       - name: Debug Outputs
         if: always()
-        run: ls -laR simple_live_app/build/app/outputs/ || echo "无输出文件夹"
+        run: ls -laR simple_live_app/build/app/outputs/ || echo "No outputs"
 
-      - name: Upload APK
+      - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: arm64-apk
+          name: android-arm64
           path: simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
-      - run: echo "Build status: ${{ job.status }}"
+      - run: echo "🍏 Status: ${{ job.status }}"
